@@ -2,16 +2,25 @@ import { useState, useEffect, useCallback } from "react";
 import keycloak from "./keycloak.js";
 import { fetchNotes, createNote, deleteNote } from "./api.js";
 
-function decodeJwtPayload(token) {
-  if (!token) return null;
-
+function decodeJwtPart(part) {
+  if (!part) return null;
   try {
-    const base64 = token.split(".")[1];
-    const json = atob(base64.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(json);
+    return JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")));
   } catch {
     return null;
   }
+}
+
+function decodeJwtPayload(token) {
+  if (!token) return null;
+  const parts = token.split(".");
+  return parts.length >= 2 ? decodeJwtPart(parts[1]) : null;
+}
+
+function decodeJwtHeader(token) {
+  if (!token) return null;
+  const parts = token.split(".");
+  return parts.length >= 2 ? decodeJwtPart(parts[0]) : null;
 }
 
 function App() {
@@ -84,16 +93,19 @@ function App() {
         access: {
           storageKey: "access_token",
           value: accessToken,
+          header: decodeJwtHeader(accessToken),
           payload: decodeJwtPayload(accessToken),
         },
         id: {
           storageKey: "id_token",
           value: idToken,
+          header: decodeJwtHeader(idToken),
           payload: decodeJwtPayload(idToken),
         },
         refresh: {
           storageKey: "refresh_token",
           value: refreshToken,
+          header: decodeJwtHeader(refreshToken),
           payload: decodeJwtPayload(refreshToken),
         },
       },
@@ -258,7 +270,7 @@ function App() {
       {/* JWT Token Inspector */}
       <section style={styles.section}>
         <h2>
-          Token Dump{" "}
+          Token Inspector{" "}
           <button
             onClick={() => setShowToken(!showToken)}
             style={styles.buttonSmall}
@@ -273,14 +285,51 @@ function App() {
         </h2>
         {showToken && tokenDump && (
           <div>
-            <p style={{ fontSize: "0.85em", color: "#666" }}>
-              Access, ID, and refresh tokens are stored in{" "}
-              <code>localStorage</code> for this lab. Open DevTools
-              {" -> "} Application {" -> "} Local Storage to inspect them.
+            <p style={{ fontSize: "0.85em", color: "#666", marginBottom: "1rem" }}>
+              Tokens are stored in <code>localStorage</code> for this lab.
+              Open DevTools {"->"} Application {"->"} Local Storage to inspect them.
+              Dumped at: {tokenDump.dumpedAt}
             </p>
-            <pre style={styles.tokenBlock}>
-              {JSON.stringify(tokenDump, null, 2)}
-            </pre>
+
+            {[
+              { label: "Access Token", data: tokenDump.tokens.access, color: "#1a73e8" },
+              { label: "ID Token", data: tokenDump.tokens.id, color: "#0d652d" },
+              { label: "Refresh Token", data: tokenDump.tokens.refresh, color: "#8b5e00" },
+            ].map(({ label, data, color }) => (
+              <details key={label} style={styles.tokenSection}>
+                <summary style={{ ...styles.tokenSummary, borderLeftColor: color }}>
+                  <strong>{label}</strong>
+                  {data.payload?.exp && (
+                    <span style={styles.tokenMeta}>
+                      exp: {new Date(data.payload.exp * 1000).toLocaleTimeString()}
+                    </span>
+                  )}
+                  {data.header?.alg && (
+                    <span style={styles.tokenMeta}>alg: {data.header.alg}</span>
+                  )}
+                </summary>
+                <div style={styles.tokenDetails}>
+                  <div style={styles.tokenSubSection}>
+                    <strong>JOSE Header:</strong>
+                    <pre style={styles.tokenBlock}>
+                      {JSON.stringify(data.header, null, 2)}
+                    </pre>
+                  </div>
+                  <div style={styles.tokenSubSection}>
+                    <strong>Payload:</strong>
+                    <pre style={styles.tokenBlock}>
+                      {JSON.stringify(data.payload, null, 2)}
+                    </pre>
+                  </div>
+                  <div style={styles.tokenSubSection}>
+                    <strong>Raw JWT:</strong>
+                    <pre style={{ ...styles.tokenBlock, wordBreak: "break-all", whiteSpace: "pre-wrap" }}>
+                      {data.value}
+                    </pre>
+                  </div>
+                </div>
+              </details>
+            ))}
           </div>
         )}
       </section>
@@ -369,13 +418,39 @@ const styles = {
     borderRadius: 4,
     cursor: "pointer",
   },
+  tokenSection: {
+    marginBottom: "0.8rem",
+    border: "1px solid #e0e0e0",
+    borderRadius: 4,
+  },
+  tokenSummary: {
+    padding: "0.6rem 0.8rem",
+    cursor: "pointer",
+    backgroundColor: "#fafafa",
+    borderLeft: "4px solid #999",
+    display: "flex",
+    alignItems: "center",
+    gap: "1rem",
+  },
+  tokenMeta: {
+    fontSize: "0.8rem",
+    color: "#666",
+    fontFamily: "monospace",
+  },
+  tokenDetails: {
+    padding: "0.8rem",
+  },
+  tokenSubSection: {
+    marginBottom: "0.6rem",
+  },
   tokenBlock: {
     backgroundColor: "#f5f5f5",
-    padding: "1rem",
+    padding: "0.8rem",
     borderRadius: 4,
     overflow: "auto",
-    fontSize: "0.85rem",
-    maxHeight: 400,
+    fontSize: "0.8rem",
+    maxHeight: 300,
+    margin: "0.3rem 0 0 0",
   },
 };
 
